@@ -4,7 +4,8 @@ Monitor pessoal de preços de passagens aéreas. Roda de graça no GitHub Action
 busca o voo mais barato das rotas configuradas (via Aviasales Data API /
 Travelpayouts) e me avisa no Telegram quando o preço cai.
 
-É um MVP pessoal: sem backend, sem frontend — só um script Python agendado.
+É um MVP pessoal: sem backend, só um script Python agendado e um dashboard
+Next.js que lê o `history.csv` gerado pelo monitor.
 
 ## Como funciona
 
