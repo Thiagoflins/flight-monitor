@@ -1,0 +1,12 @@
+{
+  "Recife -> Lisboa (set/2026)": {
+    "min_price": 5718,
+    "currency": "brl",
+    "last_checked_at": "2026-06-09T02:57:58Z"
+  },
+  "Recife -> São Paulo (ida, set/2026)": {
+    "min_price": 456,
+    "currency": "brl",
+    "last_checked_at": "2026-06-09T02:57:58Z"
+  }
+}
