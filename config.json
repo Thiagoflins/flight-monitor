@@ -1,0 +1,26 @@
+{
+  "currency": "brl",
+  "market": "br",
+  "routes": [
+    {
+      "name": "Recife -> Lisboa (set/2026)",
+      "origin": "REC",
+      "destination": "LIS",
+      "departure_at": "2026-09",
+      "return_at": "2026-09-20",
+      "one_way": false,
+      "direct": false,
+      "max_price": 3500
+    },
+    {
+      "name": "Recife -> São Paulo (ida, set/2026)",
+      "origin": "REC",
+      "destination": "GRU",
+      "departure_at": "2026-09-15",
+      "return_at": null,
+      "one_way": true,
+      "direct": false,
+      "max_price": 600
+    }
+  ]
+}
