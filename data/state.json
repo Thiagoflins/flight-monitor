@@ -13,5 +13,10 @@
     "min_price": 578,
     "currency": "brl",
     "last_checked_at": "2026-06-09T03:20:13Z"
+  },
+  "Recife -> Petrolina (ida, 12/07/2026)": {
+    "min_price": 668,
+    "currency": "brl",
+    "last_checked_at": "2026-06-09T03:51:49Z"
   }
 }
