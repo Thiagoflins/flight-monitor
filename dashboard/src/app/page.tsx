@@ -1,4 +1,5 @@
 import { getFlightHistory } from "@/lib/data";
+import { getActiveRouteNames } from "@/lib/config";
 import type { FlightRecord } from "@/lib/types";
 import { Dashboard } from "@/components/Dashboard";
 
@@ -9,7 +10,15 @@ export default async function Home() {
   let error: string | null = null;
 
   try {
-    records = await getFlightHistory();
+    const [allRecords, activeNames] = await Promise.all([
+      getFlightHistory(),
+      getActiveRouteNames(),
+    ]);
+    // history.csv é append-only; filtra para mostrar só rotas ativas no config.json.
+    const activeSet = new Set(activeNames);
+    records = activeSet.size === 0
+      ? allRecords
+      : allRecords.filter((r) => activeSet.has(r.routeName));
   } catch (err) {
     error = err instanceof Error ? err.message : "Erro desconhecido ao carregar os dados.";
   }
