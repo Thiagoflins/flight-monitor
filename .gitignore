@@ -16,3 +16,12 @@ env/
 
 # Variáveis de ambiente locais (NUNCA commitar tokens)
 .env
+
+# Agentes / skills instaladas localmente
+.agents/
+skills-lock.json
+.playwright-mcp/
+
+# Duplicatas do Finder/iCloud
+* [0-9].*
+* [0-9]

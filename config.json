@@ -3,10 +3,10 @@
   "market": "br",
   "routes": [
     {
-      "name": "Recife -> Petrolina (ida, 12/08/2026)",
+      "name": "Recife -> Petrolina (ida, 12/07/2026)",
       "origin": "REC",
       "destination": "PNZ",
-      "departure_at": "2026-08",
+      "departure_at": "2026-07",
       "return_at": null,
       "one_way": true,
       "direct": false,

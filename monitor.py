@@ -17,7 +17,8 @@ import csv
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from urllib.parse import quote_plus
 
 import requests
 
@@ -141,12 +142,18 @@ def fetch_cheapest_flight(route, currency, market, token):
         "transfers": cheapest.get("transfers"),
         "departure_at": cheapest.get("departure_at"),
         "return_at": cheapest.get("return_at"),
+        "duration_to": cheapest.get("duration_to"),
+        "duration_back": cheapest.get("duration_back"),
         "link_path": cheapest.get("link"),
     }
 
 
 def build_link(link_path, marker):
-    """Monta a URL completa de compra a partir do path retornado pela API."""
+    """Monta a URL completa de compra a partir do path retornado pela API.
+
+    Usada apenas pra registrar no history.csv (debug/auditoria). O alerta no
+    Telegram usa `build_search_links` com várias plataformas.
+    """
     if not link_path:
         return ""
     base = "https://www.aviasales.com" + link_path
@@ -154,6 +161,47 @@ def build_link(link_path, marker):
         separator = "&" if "?" in base else "?"
         base = f"{base}{separator}marker={marker}"
     return base
+
+
+def build_search_links(route, flight):
+    """Monta URLs de busca em Google Flights, Skyscanner e Kayak.
+
+    Usa a data efetiva retornada pela API (`flight.departure_at`), que é o
+    dia mais barato do mês monitorado — assim a busca abre exatamente no dia
+    do preço alertado, não num dia genérico.
+    """
+    origin = route["origin"]
+    dest = route["destination"]
+    dep_date = (flight.get("departure_at") or "")[:10]
+    ret_date = (flight.get("return_at") or "")[:10]
+    one_way = route.get("one_way", True)
+
+    if not dep_date:
+        return {}
+
+    q = f"Flights from {origin} to {dest} on {dep_date}"
+    if not one_way and ret_date:
+        q += f" through {ret_date}"
+    google = f"https://www.google.com/travel/flights?q={quote_plus(q)}"
+
+    yymmdd = dep_date[2:4] + dep_date[5:7] + dep_date[8:10]
+    skyscanner = (
+        f"https://www.skyscanner.com.br/transporte/passagens-aereas/"
+        f"{origin.lower()}/{dest.lower()}/{yymmdd}/"
+    )
+    if not one_way and ret_date:
+        ret_yymmdd = ret_date[2:4] + ret_date[5:7] + ret_date[8:10]
+        skyscanner += f"{ret_yymmdd}/"
+
+    kayak = f"https://www.kayak.com.br/flights/{origin}-{dest}/{dep_date}"
+    if not one_way and ret_date:
+        kayak += f"/{ret_date}"
+
+    return {
+        "Google Flights": google,
+        "Skyscanner": skyscanner,
+        "Kayak": kayak,
+    }
 
 
 def send_telegram_alert(bot_token, chat_id, message_html):
@@ -168,26 +216,72 @@ def send_telegram_alert(bot_token, chat_id, message_html):
     response.raise_for_status()
 
 
-def format_alert_message(route, flight, link, is_new_low):
-    motivo = "🔻 Novo recorde de menor preço!" if is_new_low else "✅ Preço dentro do limite definido"
+def _format_datetime_br(iso_str):
+    """Converte '2026-07-12T08:25:00-03:00' em '12/07/2026 - 08:25'.
+
+    Mantém o horário local do voo (que já vem no fuso da origem),
+    sem conversão de timezone.
+    """
+    if not iso_str or len(iso_str) < 16:
+        return iso_str or "?"
+    return f"{iso_str[8:10]}/{iso_str[5:7]}/{iso_str[0:4]} - {iso_str[11:13]}:{iso_str[14:16]}"
+
+
+def _arrival_datetime_br(iso_str, duration_minutes):
+    """Soma a duração (em minutos) ao horário de partida e formata em BR."""
+    if not iso_str or not duration_minutes or duration_minutes <= 0:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso_str)
+    except ValueError:
+        return None
+    arr = dt + timedelta(minutes=duration_minutes)
+    return f"{arr.day:02d}/{arr.month:02d}/{arr.year} - {arr.hour:02d}:{arr.minute:02d}"
+
+
+def format_alert_message(route, flight, is_new_low, is_within_max):
+    price = flight["price"]
+    currency = flight["currency"].upper()
+    max_price = route.get("max_price")
+
+    if is_within_max:
+        cabecalho = f"<b>🎯🔥 OPORTUNIDADE — {route['name']}</b>"
+        motivo = f"<b>Preço dentro do seu alvo!</b> (limite: {max_price} {currency})"
+    elif is_new_low:
+        cabecalho = f"<b>📉 Novo recorde — {route['name']}</b>"
+        motivo = f"Preço caiu, mas ainda acima do alvo de {max_price} {currency}."
+    else:
+        cabecalho = f"<b>✈️ Alerta de preço — {route['name']}</b>"
+        motivo = "Atualização de preço."
 
     transfers = flight.get("transfers")
     paradas = "voo direto" if transfers == 0 else f"{transfers} parada(s)" if transfers is not None else "paradas: ?"
 
     linhas = [
-        f"<b>✈️ Alerta de preço — {route['name']}</b>",
+        cabecalho,
         motivo,
         "",
         f"<b>Rota:</b> {route['origin']} → {route['destination']}",
-        f"<b>Preço:</b> {flight['price']} {flight['currency'].upper()}",
-        f"<b>Ida:</b> {flight.get('departure_at') or '?'}",
+        f"<b>Preço:</b> {price} {currency}",
+        f"<b>Ida:</b> {_format_datetime_br(flight.get('departure_at'))}",
     ]
+    chegada_ida = _arrival_datetime_br(flight.get("departure_at"), flight.get("duration_to"))
+    if chegada_ida:
+        linhas.append(f"<b>Chegada:</b> {chegada_ida}")
     if flight.get("return_at"):
-        linhas.append(f"<b>Volta:</b> {flight['return_at']}")
+        linhas.append(f"<b>Volta:</b> {_format_datetime_br(flight['return_at'])}")
+        chegada_volta = _arrival_datetime_br(flight.get("return_at"), flight.get("duration_back"))
+        if chegada_volta:
+            linhas.append(f"<b>Chegada (volta):</b> {chegada_volta}")
     linhas.append(f"<b>Companhia:</b> {flight.get('airline') or '?'}")
     linhas.append(f"<b>Paradas:</b> {paradas}")
-    if link:
-        linhas.append(f"<b>Link:</b> {link}")
+
+    search_links = build_search_links(route, flight)
+    if search_links:
+        linhas.append("")
+        linhas.append("<b>🔗 Buscar em:</b>")
+        for plataforma, url in search_links.items():
+            linhas.append(f'  • <a href="{url}">{plataforma}</a>')
 
     return "\n".join(linhas)
 
@@ -238,7 +332,7 @@ def process_route(route, currency, market, tokens, state, now_iso):
         deve_alertar = is_within_max or is_new_low
 
     if deve_alertar:
-        message = format_alert_message(route, flight, link, is_new_low and not is_first_run)
+        message = format_alert_message(route, flight, is_new_low and not is_first_run, is_within_max)
         try:
             send_telegram_alert(tokens["telegram_bot"], tokens["telegram_chat"], message)
             print(f"[{route_name}] Alerta enviado ao Telegram (preço: {price} {flight['currency'].upper()}).")
